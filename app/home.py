@@ -78,15 +78,22 @@ def buscar_anime():
                     generos_limpos = ", ".join(anime_alvo['generos'])
                     st.write(f"**Gêneros:** {generos_limpos}")
                     st.write(f"**Episódios:** {int(anime_alvo['episodes'])}")
-                    sinopse = anime_alvo['synopsis'] # ou anime_alvo['synopsis']
-                    limite = 200
+                    st.markdown("**Sinopse:**")
+                    st.caption(anime_alvo['synopsis']) # ou anime_alvo['synopsis']
+                    st.markdown("Onde assistir:")
+                    st.write(anime_alvo['streaming_sites']) # ou anime_alvo['streaming_sites']
 
-                    if len(sinopse) > limite:
-                        sinopse_exibir = sinopse[:limite] + "..."
-                    else:
-                        sinopse_exibir = sinopse
-
-                    st.write(sinopse_exibir)
+                    trailer_col, saiba_col = st.columns(2)
+                    id_video = anime_alvo['trailer_id']
+                    url_trailer = f"https://www.youtube.com/watch?v={id_video}" if pd.notna(id_video) else None
+                    with trailer_col:
+                        if url_trailer:
+                            st.link_button("▶️ Assistir Trailer", url=str(url_trailer), use_container_width=True)
+                        else:
+                            st.button("🚫 Sem Trailer", disabled=True, use_container_width=True)
+                    with saiba_col:
+                        if st.button("ℹ️ Saiba Mais", use_container_width=True):
+                            st.info(f"Abrindo detalhes de {anime_alvo['title']}...")
 
             st.divider()
 
@@ -110,6 +117,7 @@ def buscar_anime():
                         st.image(row['cover_image_large'], use_container_width=True)
                         st.write(f"**{row['title']}**")
                         st.caption(f"{row['pontos']} gêneros iguais")
+                        st.button("Detalhes", key=f"rec_{idx}", use_container_width=True)
                         
         else:
             st.error("Nenhum anime encontrado com esse nome.")
