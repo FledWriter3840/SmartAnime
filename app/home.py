@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from thefuzz import fuzz, process
 import numpy as np
 import csv 
 
@@ -14,10 +15,14 @@ st.title('SMartAnime')
 st.sidebar.title('Gêneros Populares')
 st.sidebar.button("Ação")
 st.sidebar.button("Aventura")
-st.sidebar.button("Isekai")
-st.sidebar.button("Seinen")
+st.sidebar.button("Drama")
+st.sidebar.button("Fantasia")
 st.sidebar.button("Romance")
 st.sidebar.button("Comédia")
+
+# garantir estado inicial
+if "busca" not in st.session_state:
+    st.session_state.busca = ""
 
 # Botão de perfil no topo
 def meu_perfil():
@@ -36,7 +41,7 @@ col_busca_1, col_busca_2, col_busca_3 = st.columns([1, 2, 1])
 
 with col_busca_2:
     # O Enter aciona o código automaticamente aqui
-    nome_buscado = st.text_input("Pesquisar:", placeholder="Digite o nome do anime...")
+    nome_buscado = st.text_input("Pesquisar:",key ="busca", placeholder="Digite o nome do anime...")
     botao_clicado = st.button("Buscar Anime", use_container_width=True)
     voltar_inicio = st.button("Voltar", use_container_width=True)
 
@@ -55,13 +60,22 @@ def similaridade_de_generos(genres1, genres2):
     uniao = set1.union(set2)
     return len(intersecao) / len(uniao) if uniao else 0.0
 
+
+nome_buscado = nome_buscado.strip()
 # --- LÓGICA DE EXIBIÇÃO ---
 # Se o usuário escreveu algo E (apertou Enter OU clicou no botão)
-def buscar_anime():
+def buscar_anime(nome_buscado, botao_clicado):  
+
     if nome_buscado or botao_clicado:
         
         # 1. Encontrar o anime alvo
-        resultado = df[df['title'].str.contains(nome_buscado, case=False, na=False)]
+        resultado = df[
+            df['title'].str.contains(nome_buscado, case=False, na=False)|
+            df['english_title'].str.contains(nome_buscado, case=False, na=False)|
+            df['japanese_title'].str.contains(nome_buscado, case=False, na=False)|
+            df['user_preferred_title'].str.contains(nome_buscado, case=False, na=False)
+        ]
+
         
         if not resultado.empty:
             anime_alvo = resultado.iloc[0]
@@ -79,7 +93,7 @@ def buscar_anime():
                     st.write(f"**Gêneros:** {generos_limpos}")
                     st.write(f"**Episódios:** {int(anime_alvo['episodes'])}")
                     st.markdown("**Sinopse:**")
-                    st.caption(anime_alvo['synopsis']) # ou anime_alvo['synopsis']
+                    st.caption(anime_alvo['synopsis'][:250] + "..." if len(anime_alvo['synopsis']) > 250 else anime_alvo['synopsis']) # ou anime_alvo['synopsis']
                     st.markdown("Onde assistir:")
                     st.write(anime_alvo['streaming_sites']) # ou anime_alvo['streaming_sites']
 
@@ -119,80 +133,81 @@ def buscar_anime():
                         st.caption(f"{row['pontos']} gêneros iguais")
                         st.button("Detalhes", key=f"rec_{idx}", use_container_width=True)
                         
+
         else:
-            st.error("Nenhum anime encontrado com esse nome.")
+            lista_titulos = df['title'].dropna().unique()
+            sugestoes = process.extract(nome_buscado, lista_titulos, limit=5)
+
+            st.markdown(f"**Nenhum anime encontrado com '{nome_buscado}'.**")
+
+            for i, (sugestao, score) in enumerate(sugestoes):
+                if score >= 60:
+                    if st.button(
+                        f"Você quis dizer: '{sugestao}'?",
+                        key=f"sugestao_{i}"
+                    ):
+                        st.session_state.busca = sugestao
+                        st.rerun()
+                else : st.error("Nenhum anime encontrado com esse nome.")
 
 
-buscar_anime()
+buscar_anime(nome_buscado, botao_clicado)
 
 # Função para criar um card de anime
-def anime_card(titulo, imagem_url):
-    with st.container():
-        st.image(imagem_url, use_container_width=True)
-        st.caption(f"**{titulo}**")
-        if st.button("Detalhes", key=titulo):
-            st.info(f"Abrindo info de {titulo}...")
+def top_animes():
+    top_animes = df.sort_values(by='score', ascending=False).head(5)
+    cols = st.columns(5)
+    for i, (idx, row) in enumerate(top_animes.iterrows()):
+        with cols[i]:
+                with st.container(border=True):
+                    st.image(row['cover_image_large'], use_container_width=True)
+                    st.caption(f"**{row['title']}**")
+                    if st.button("Detalhes", key=row['title']):
+                        st.info(f"Abrindo info de {row['title']}...")
 
-st.markdown("## 🎬 Top Categorias de Anime")
+st.markdown("## 🌟 Top Animes")
 
-# --- CATEGORIA 1: SHONEN ---
-st.markdown("## 🔥 Shonen")
-# Criamos 4 colunas para 4 animes lado a lado
-col1, col2, col3, col4 = st.columns(4)
+top_animes()
 
-with col1:
-    anime_card("Dragon Ball Z", "https://geekmega.com/uploads/geek-obras/obra-3-capa.webp")
-with col2:
-    anime_card("Naruto", "https://i.pinimg.com/474x/0f/14/43/0f14432778f5435ab82f2801d250bcea.jpg")
-with col3:
-    anime_card("One Piece", "https://cdn.selectgame.net/wp-content/uploads/2023/05/One-Piece-Capa-Anime-001-Luffy-Nami-Zoro-Usopp-Sanji.webp")
-with col4:
-    anime_card("Bleach", "https://cinema10.com.br/upload/series/series_2624_bleach_Easy-Resize.com%20(1).jpg?default=poster")
+def top_categoria():
 
-st.divider() # Linha separadora
+# Lista dos gêneros que você quer destacar
 
-# --- CATEGORIA 2: ISEKAI ---
-st.markdown("## 🌌 Isekai")
-col5, col6, col7, col8 = st.columns(4)
+    generos_destaque = ["Action", "Romance", "Fantasy", "Comedy", "Drama"]
 
-with col5:
-    anime_card("Sword Art Online", "https://via.placeholder.com/150x200?text=SAO")
-with col6:
-    anime_card("Overlord", "https://via.placeholder.com/150x200?text=Overlord")
-with col7:
-    anime_card("Re:Zero", "https://via.placeholder.com/150x200?text=ReZero")
-with col8:
-    anime_card("Konosuba", "https://via.placeholder.com/150x200?text=Konosuba")
+    st.markdown("🏆 Top por Categoria")
 
-st.divider()
+    # Criando abas para cada gênero
+    tabs = st.tabs(generos_destaque)
 
-# --- CATEGORIA 3: ROMANCE ---
-st.markdown("## 🤍 Romance")
-col9, col10, col11, col12 = st.columns(4)
+    for i, genero in enumerate(generos_destaque):
+        with tabs[i]:
+            # Filtragem: Pegamos animes que contenham o gênero e ordenamos pelo Score
+            # O str.contains ajuda a achar o gênero mesmo que ele esteja no meio de outros
+            top_genero = df[df['genres'].str.contains(genero, na=False)].sort_values(by='score', ascending=False).head(4)
+            
+            if not top_genero.empty:
+                cols = st.columns(4)
+                for j, (idx, row) in enumerate(top_genero.iterrows()):
+                    with cols[j]:
+                        with st.container(border=True):
+                            # Imagem com altura fixa para não quebrar o layout
+                            st.image(row['cover_image_large'], use_container_width=True)
+                            
+                            # Título limitado
+                            titulo_curto = row['title'][:20] + "..." if len(row['title']) > 20 else row['title']
+                            st.markdown(f"**{titulo_curto}**")
+                            
+                            # Nota em destaque
+                            st.caption(f"⭐ {row['score']}")
+                            
+                            # Botão para ver detalhes (opcional)
+                            if st.button("Detalhes", key=f"btn_{genero}_{idx}", use_container_width=True):
+                                st.session_state.busca = row['title'] # Exemplo de como trocar a busca principal
+            else:
+                st.info(f"Nenhum anime de {genero} encontrado no banco de dados.")
 
-with col9:
-    anime_card("MY Dress Up Darling", "https://via.placeholder.com/150x200?text=SAO")
-with col10:
-    anime_card("Kaguya-sama: Love is War", "https://via.placeholder.com/150x200?text=Overlord")
-with col11:
-    anime_card("Horimiya", "https://via.placeholder.com/150x200?text=ReZero")
-with col12:
-    anime_card("The Fragrant Flower Blooms with Dignity", "https://via.placeholder.com/150x200?text=Konosuba")
-
-st.divider()
-
-# --- CATEGORIA 4: COMEDIA ---
-st.markdown("## 🎤 Comédia")
-col13, col14, col15, col16 = st.columns(4)
-
-with col13:
-    anime_card("Spy x Family", "https://via.placeholder.com/150x200?text=SAO")
-with col14:
-    anime_card("Gintama", "https://via.placeholder.com/150x200?text=Overlord")
-with col15:
-    anime_card("My Deer Friend Nokotan", "https://via.placeholder.com/150x200?text=ReZero")
-with col16:
-    anime_card("Grand Blue", "https://via.placeholder.com/150x200?text=Konosuba")
+top_categoria()
 
 st.divider()
 
