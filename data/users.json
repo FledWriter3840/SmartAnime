@@ -4,7 +4,43 @@
     "email": "desouzasoaresmatheus@gmail.com",
     "data_criacao": "2026-05-04T20:18:22.877644",
     "favoritos": [
-      "Dandadan 2nd Season"
-    ]
+      "Boku no Kokoro no Yabai Yatsu Movie",
+      "Kono Kaisha ni Suki na Hito ga Imasu",
+      "Ponkotsu Fuuki Iin to Skirt take ga Futekisetsu na JK no Hanashi",
+      "Sousou no Frieren 2nd Season",
+      "Kaoru Hana wa Rin to Saku"
+    ],
+    "historico": [
+      {
+        "title": "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
+        "data": "2026-05-05T20:33:15.806332"
+      },
+      {
+        "title": "Chainsaw Man: Reze-hen",
+        "data": "2026-05-05T20:52:55.571418"
+      },
+      {
+        "title": "Aharen-san wa Hakarenai Season 2",
+        "data": "2026-05-05T20:53:11.320047"
+      },
+      {
+        "title": "DIGIMON BEATBREAK",
+        "data": "2026-05-05T20:53:24.916525"
+      }
+    ],
+    "comentarios": {
+      "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE": [
+        {
+          "texto": "ffffffffffffffffff",
+          "data": "2026-05-05T21:06:20.836943"
+        }
+      ],
+      "Chainsaw Man: Reze-hen": [
+        {
+          "texto": "É a tal da depressão três!!!",
+          "data": "2026-05-05T21:22:28.260894"
+        }
+      ]
+    }
   }
 }

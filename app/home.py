@@ -65,7 +65,9 @@ def registrar_usuario(username, password, email=""):
         "password": hash_password(password),
         "email": email,
         "data_criacao": datetime.now().isoformat(),
-        "favoritos": []
+        "favoritos": [],
+        "historico": [],
+        "comentarios": {}
     }
 
     salvar_usuarios(users)
@@ -133,39 +135,250 @@ def is_favorito(anime_title):
         st.session_state.favoritos = carregar_favoritos()
     return anime_title in st.session_state.favoritos
 
-# Inicializar favoritos no session_state
+# --- GERENCIAMENTO DE HISTÓRICO ---
+def normalizar_historico(historico):
+    """Converte histórico antigo (lista de títulos) para registros com data."""
+    if not historico:
+        return []
+
+    historico_normalizado = []
+    for item in historico:
+        if isinstance(item, dict):
+            title = item.get("title")
+            date = item.get("data") or item.get("date")
+            if title:
+                historico_normalizado.append({"title": title, "data": date or datetime.now().isoformat()})
+        elif isinstance(item, str):
+            historico_normalizado.append({"title": item, "data": datetime.now().isoformat()})
+
+    # Remover duplicatas mantendo o primeiro registro encontrado
+    vistos = set()
+    resultado = []
+    for item in historico_normalizado:
+        if item["title"] not in vistos:
+            resultado.append(item)
+            vistos.add(item["title"])
+
+    return resultado
+
+
+def obter_historico_usuario(username):
+    """Obtém histórico de animes assistidos do usuário"""
+    users = carregar_usuarios()
+    if username in users:
+        return normalizar_historico(users[username].get("historico", []))
+    return []
+
+
+def salvar_historico_usuario(username, historico):
+    """Salva histórico de animes assistidos do usuário"""
+    users = carregar_usuarios()
+    if username in users:
+        users[username]["historico"] = historico
+        salvar_usuarios(users)
+
+
+def carregar_historico():
+    """Carrega histórico do usuário atual"""
+    if "usuario_logado" in st.session_state:
+        return obter_historico_usuario(st.session_state.usuario_logado)
+    return []
+
+
+def salvar_historico(historico):
+    """Salva histórico do usuário atual"""
+    if "usuario_logado" in st.session_state:
+        salvar_historico_usuario(st.session_state.usuario_logado, historico)
+
+
+def obter_titulos_historico(historico):
+    """Extrai títulos do histórico para checagens e filtragem."""
+    return [item.get("title") for item in historico if isinstance(item, dict) and item.get("title")]
+
+
+def marcar_como_assistido(anime_title):
+    """Marca um anime como assistido no histórico sem duplicar"""
+    if "usuario_logado" not in st.session_state:
+        st.warning("Você precisa estar logado para marcar como assistido!")
+        return
+
+    if "historico" not in st.session_state:
+        st.session_state.historico = carregar_historico()
+
+    titulos = obter_titulos_historico(st.session_state.historico)
+    if anime_title in titulos:
+        st.info("Este anime já está no seu histórico.")
+        return
+
+    st.session_state.historico.append({"title": anime_title, "data": datetime.now().isoformat()})
+    salvar_historico(st.session_state.historico)
+    st.success("Anime marcado como assistido!")
+
+
+def is_assistido(anime_title):
+    """Verifica se anime já foi marcado como assistido"""
+    if "usuario_logado" not in st.session_state:
+        return False
+
+    if "historico" not in st.session_state:
+        st.session_state.historico = carregar_historico()
+    return anime_title in obter_titulos_historico(st.session_state.historico)
+
+
+def obter_comentarios_usuario(username):
+    """Obtém os comentários registrados pelo usuário"""
+    users = carregar_usuarios()
+    if username in users:
+        return users[username].get("comentarios", {})
+    return {}
+
+
+def salvar_comentarios_usuario(username, comentarios):
+    """Salva os comentários do usuário"""
+    users = carregar_usuarios()
+    if username in users:
+        users[username]["comentarios"] = comentarios
+        salvar_usuarios(users)
+
+
+def adicionar_comentario(anime_title, safe_key):
+    """Adiciona um comentário do usuário ao anime"""
+    if "usuario_logado" not in st.session_state:
+        st.warning("Você precisa estar logado para comentar!")
+        return
+
+    input_key = f"{safe_key}_input"
+    texto = st.session_state.get(input_key, "").strip()
+    if not texto:
+        st.warning("Digite um comentário antes de enviar.")
+        return
+
+    username = st.session_state.usuario_logado
+    comentarios = obter_comentarios_usuario(username)
+    if not isinstance(comentarios, dict):
+        comentarios = {}
+
+    comentarios_por_anime = comentarios.get(anime_title, [])
+    comentarios_por_anime.append({
+        "texto": texto,
+        "data": datetime.now().isoformat()
+    })
+
+    comentarios[anime_title] = comentarios_por_anime
+    salvar_comentarios_usuario(username, comentarios)
+    st.session_state[input_key] = ""
+    st.success("Comentário publicado!")
+
+
+def todos_comentarios_anime(anime_title):
+    """Retorna todos os comentários de um anime por todos os usuários"""
+    users = carregar_usuarios()
+    comentarios = []
+
+    for username, dados in users.items():
+        user_comentarios = dados.get("comentarios", {})
+        anime_comentarios = user_comentarios.get(anime_title, [])
+        for comentario in anime_comentarios:
+            comentarios.append({
+                "usuario": username,
+                "texto": comentario.get("texto", ""),
+                "data": comentario.get("data", datetime.now().isoformat())
+            })
+
+    return sorted(comentarios, key=lambda c: c.get("data", ""), reverse=True)
+
+
+# Inicializar favoritos e histórico no session_state
 if "favoritos" not in st.session_state:
     st.session_state.favoritos = carregar_favoritos()
+if "historico" not in st.session_state:
+    st.session_state.historico = carregar_historico()
 
 # Título e barra lateral
 st.title("SMartAnime")
 st.sidebar.title("Gêneros Populares")
-for genero in ["Ação", "Aventura", "Drama", "Fantasia", "Romance", "Comédia"]:
-    st.sidebar.button(genero)
+generos_sidebar = [
+    "Ação", "Aventura", "Drama", "Fantasia", "Romance", "Comédia",
+    "Ecchi", "Hentai", "Horror", "Mahou Shoujo", "Mecha", "Music",
+    "Mystery", "Psychological", "Sci-Fi", "Slice of Life", "Sports",
+    "Supernatural", "Thriller"
+]
+cols_sidebar = st.sidebar.columns(3)
+for i, genero in enumerate(generos_sidebar):
+    with cols_sidebar[i % 3]:
+        if st.button(genero, key=f"genero_btn_{i}", use_container_width=True):
+            st.session_state.selected_genero = genero
+            st.session_state.pagina_genero = 1
+            st.session_state.mostrar_favoritos = False
+            st.session_state.mostrar_historico = False
+            st.session_state.mostrar_perfil = False
 
-# Seção de Favoritos na Sidebar (só mostra se logado)
+# Seção de Favoritos e Histórico na Sidebar (só mostra se logado)
 if "usuario_logado" in st.session_state:
     st.sidebar.markdown("---")
     st.sidebar.subheader("⭐ Meus Favoritos")
-    if st.sidebar.button("Ver Favoritos", use_container_width=True):
-        st.session_state.mostrar_favoritos = True
+    favoritos_preview = st.session_state.get("favoritos", [])[:3]
+    if favoritos_preview:
+        for title in favoritos_preview:
+            st.sidebar.write(f"• {title}")
+        restante = len(st.session_state.get("favoritos", [])) - 3
+        if restante > 0:
+            if st.sidebar.button(f"Ver mais favoritos ({restante})", use_container_width=True, key="ver_mais_favoritos"):
+                st.session_state.selected_genero = None
+                st.session_state.mostrar_favoritos = True
+                st.session_state.mostrar_historico = False
+                st.session_state.mostrar_perfil = False
+        else:
+            if st.sidebar.button("Ver todos os favoritos", use_container_width=True, key="ver_todos_favoritos"):
+                st.session_state.selected_genero = None
+                st.session_state.mostrar_favoritos = True
+                st.session_state.mostrar_historico = False
+                st.session_state.mostrar_perfil = False
     else:
-        st.session_state.mostrar_favoritos = False
+        st.sidebar.caption("Nenhum favorito ainda.")
 
-    # Contador de favoritos
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📚 Meu Histórico")
+    historico_preview = obter_titulos_historico(st.session_state.get("historico", []))[:3]
+    if historico_preview:
+        for title in historico_preview:
+            st.sidebar.write(f"• {title}")
+        restante = len(st.session_state.get("historico", [])) - 3
+        if restante > 0:
+            if st.sidebar.button(f"Ver mais histórico ({restante})", use_container_width=True, key="ver_mais_historico"):
+                st.session_state.selected_genero = None
+                st.session_state.mostrar_historico = True
+                st.session_state.mostrar_favoritos = False
+                st.session_state.mostrar_perfil = False
+        else:
+            if st.sidebar.button("Ver todo o histórico", use_container_width=True, key="ver_todo_historico"):
+                st.session_state.selected_genero = None
+                st.session_state.mostrar_historico = True
+                st.session_state.mostrar_favoritos = False
+                st.session_state.mostrar_perfil = False
+    else:
+        st.sidebar.caption("Nenhum anime assistido ainda.")
+
+    # Contador de favoritos e histórico
     num_favoritos = len(st.session_state.get("favoritos", []))
+    num_historico = len(st.session_state.get("historico", []))
     st.sidebar.caption(f"{num_favoritos} anime(s) favoritado(s)")
+    st.sidebar.caption(f"{num_historico} anime(s) assistido(s)")
 
 # garantir estado inicial
 if "busca" not in st.session_state:
     st.session_state.busca = ""
+if "selected_genero" not in st.session_state:
+    st.session_state.selected_genero = None
+if "pagina_genero" not in st.session_state:
+    st.session_state.pagina_genero = 1
 
 # Botão de perfil no topo
 def meu_perfil():
     vazio1, vazio2, col_botao = st.columns([4, 4, 1])
     with col_botao:
         if "usuario_logado" in st.session_state:
-            # Usuário logado - mostra menu de perfil
+            # Usuário logado - abre página de perfil
             if st.button(f"👤 {st.session_state.usuario_logado}"):
                 st.session_state.mostrar_perfil = True
         else:
@@ -194,6 +407,7 @@ def interface_login():
                     if sucesso:
                         st.session_state.usuario_logado = username_login
                         st.session_state.favoritos = obter_favoritos_usuario(username_login)
+                        st.session_state.historico = obter_historico_usuario(username_login)
                         st.session_state.mostrar_login = False
                         st.success(mensagem)
                         st.rerun()
@@ -225,13 +439,14 @@ def interface_login():
                         st.error(mensagem)
 
 def interface_perfil():
-    """Interface do perfil do usuário logado"""
-    st.markdown(f"### 👤 Perfil de {st.session_state.usuario_logado}")
+    """Interface do perfil do usuário logado em página exclusiva"""
+    st.markdown(f"# 👤 {st.session_state.usuario_logado}")
+    st.divider()
 
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.markdown("#### 📊 Estatísticas")
+        st.markdown("### 📊 Estatísticas")
         num_favoritos = len(st.session_state.get("favoritos", []))
         st.metric("Animes Favoritados", num_favoritos)
 
@@ -247,14 +462,24 @@ def interface_perfil():
                 except:
                     pass
 
+            num_historico = len(st.session_state.get("historico", []))
+            st.metric("Animes Assistidos", num_historico)
+
     with col2:
-        st.markdown("#### ⚙️ Ações")
+        st.markdown("### ⚙️ Ações")
         if st.button("Ver Meus Favoritos", use_container_width=True):
+            st.session_state.selected_genero = None
             st.session_state.mostrar_favoritos = True
             st.session_state.mostrar_perfil = False
-            st.rerun()
+        if st.button("Ver Meu Histórico", use_container_width=True):
+            st.session_state.selected_genero = None
+            st.session_state.mostrar_historico = True
+            st.session_state.mostrar_perfil = False
 
         st.markdown("---")
+
+        if st.button("Voltar", use_container_width=True):
+            st.session_state.mostrar_perfil = False
 
         if st.button("Sair da Conta", use_container_width=True, type="secondary"):
             # Limpar dados da sessão
@@ -262,8 +487,12 @@ def interface_perfil():
                 del st.session_state.usuario_logado
             if "favoritos" in st.session_state:
                 del st.session_state.favoritos
+            if "historico" in st.session_state:
+                del st.session_state.historico
             if "mostrar_favoritos" in st.session_state:
                 del st.session_state.mostrar_favoritos
+            if "mostrar_historico" in st.session_state:
+                del st.session_state.mostrar_historico
             if "mostrar_perfil" in st.session_state:
                 del st.session_state.mostrar_perfil
 
@@ -271,6 +500,14 @@ def interface_perfil():
             st.rerun()
 
 meu_perfil()
+
+# Exibir página exclusiva de perfil se solicitado
+if st.session_state.get("mostrar_perfil", False):
+    if "usuario_logado" in st.session_state:
+        interface_perfil()
+        st.stop()
+    else:
+        st.session_state.mostrar_perfil = False
 
 # Interfaces de autenticação
 if st.session_state.get("mostrar_login", False):
@@ -280,11 +517,104 @@ if st.session_state.get("mostrar_login", False):
     else:
         st.session_state.mostrar_login = False
 
-if st.session_state.get("mostrar_perfil", False):
-    interface_perfil()
-    st.divider()
-
 csv_path = base_dir / "data" / "animes.csv"
+
+# Carregar dados dos animes
+df = pd.read_csv(csv_path, encoding="cp1252")
+if "episodes" in df.columns:
+    df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").fillna(0).astype(int)
+else:
+    df["episodes"] = 0
+
+# Exibir página de favoritos se solicitado (ANTES de renderizar o conteúdo principal)
+if st.session_state.get("mostrar_favoritos", False):
+    if "usuario_logado" in st.session_state:
+        st.markdown("# ⭐ Meus Favoritos")
+        st.divider()
+        
+        if not st.session_state.favoritos:
+            st.info("Você ainda não favoritou nenhum anime. Clique no coração nos cards para adicionar!")
+        else:
+            df_favoritos = df[df['title'].isin(st.session_state.favoritos)]
+            if df_favoritos.empty:
+                st.warning("Alguns animes favoritos podem não estar disponíveis no banco de dados atual.")
+            else:
+                st.write(f"**{len(df_favoritos)} anime(s) favoritado(s)**")
+                cols = st.columns(4)
+                for i, (_, row) in enumerate(df_favoritos.iterrows()):
+                    with cols[i % 4]:
+                        with st.container():
+                            cover_image = row.get("cover_image_large", "")
+                            if pd.notna(cover_image) and cover_image:
+                                st.image(cover_image, use_container_width=True)
+                            else:
+                                st.info("Imagem não disponível.")
+                            st.write(f"**{row.get('title', 'Título não disponível')}**")
+                            generos_limpos = ", ".join(row.get("generos", [])) if row.get("generos", []) else "Não informado"
+                            st.caption(f"⭐ {row.get('score', 0)} | {generos_limpos}")
+                            if st.button("💔 Remover", key=f"rem_fav_{i}", use_container_width=True):
+                                toggle_favorito(row.get('title', ''))
+        
+        st.divider()
+        if st.button("🔙 Voltar", use_container_width=True):
+            st.session_state.mostrar_favoritos = False
+        st.stop()
+    else:
+        st.warning("Você precisa estar logado para acessar seus favoritos!")
+        st.session_state.mostrar_favoritos = False
+
+# Exibir página de histórico se solicitado (ANTES de renderizar o conteúdo principal)
+if st.session_state.get("mostrar_historico", False):
+    if "usuario_logado" in st.session_state:
+        st.markdown("# 📚 Histórico de Assistidos")
+        st.divider()
+        
+        if not st.session_state.historico:
+            st.info("Seu histórico de assistidos está vazio. Marque um anime como assistido na página de detalhes.")
+        else:
+            historico_ordenado = sorted(
+                st.session_state.historico,
+                key=lambda item: item.get("data", ""),
+                reverse=True,
+            )
+            st.write(f"**{len(historico_ordenado)} anime(s) assistido(s)**")
+            cols = st.columns(4)
+            index = 0
+            for item in historico_ordenado:
+                anime_title = item.get("title")
+                data_marcacao = item.get("data")
+                if not anime_title:
+                    continue
+                row = df[df["title"] == anime_title]
+                if row.empty:
+                    continue
+                row = row.iloc[0]
+                data_formatada = data_marcacao
+                try:
+                    data_formatada = datetime.fromisoformat(data_marcacao).strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    pass
+                with cols[index % 4]:
+                    with st.container():
+                        cover_image = row.get("cover_image_large", "")
+                        if pd.notna(cover_image) and cover_image:
+                            st.image(cover_image, use_container_width=True)
+                        else:
+                            st.info("Imagem não disponível.")
+                        st.write(f"**{anime_title}**")
+                        generos_limpos = ", ".join(row.get("generos", [])) if row.get("generos", []) else "Não informado"
+                        st.caption(f"⭐ {row.get('score', 0)} | {generos_limpos}")
+                        st.caption(f"🗓️ Assistido em: {data_formatada}")
+                        st.markdown("✅ Assistido")
+                index += 1
+        
+        st.divider()
+        if st.button("🔙 Voltar", use_container_width=True):
+            st.session_state.mostrar_historico = False
+        st.stop()
+    else:
+        st.warning("Você precisa estar logado para acessar seu histórico!")
+        st.session_state.mostrar_historico = False
 
 df = pd.read_csv(csv_path, encoding="cp1252")
 # Substitui todos os vazios (NaN) na coluna de episódios por 0
@@ -295,9 +625,8 @@ else:
 
 # --- FUNÇÕES AUXILIARES ---
 def limpar_busca():
-    """Limpa o estado de busca e força rerun"""
+    """Limpa o estado de busca"""
     st.session_state.busca = ""
-    st.rerun()
 
 def exibir_favoritos():
     """Exibe seção de animes favoritos"""
@@ -330,6 +659,95 @@ def exibir_favoritos():
                 if st.button("💔 Remover", key=f"rem_fav_{i}", use_container_width=True):
                     toggle_favorito(row.get('title', ''))
                     st.rerun()
+
+
+def exibir_historico():
+    """Exibe seção de animes assistidos"""
+    st.markdown("## 📚 Histórico de Assistidos")
+
+    if not st.session_state.historico:
+        st.info("Seu histórico de assistidos está vazio. Marque um anime como assistido na página de detalhes.")
+        return
+
+    historico_ordenado = sorted(
+        st.session_state.historico,
+        key=lambda item: item.get("data", ""),
+        reverse=True,
+    )
+
+    st.write(f"**{len(historico_ordenado)} anime(s) assistido(s)**")
+
+    cols = st.columns(4)
+    index = 0
+    for item in historico_ordenado:
+        anime_title = item.get("title")
+        data_marcacao = item.get("data")
+        if not anime_title:
+            continue
+
+        row = df[df["title"] == anime_title]
+        if row.empty:
+            continue
+
+        row = row.iloc[0]
+        data_formatada = data_marcacao
+        try:
+            data_formatada = datetime.fromisoformat(data_marcacao).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            pass
+
+        with cols[index % 4]:
+            with st.container():
+                cover_image = row.get("cover_image_large", "")
+                exibir_imagem_padronizada(cover_image)
+                st.write(f"**{anime_title}**")
+                generos_limpos = ", ".join(row.get("generos", [])) if row.get("generos", []) else "Não informado"
+                st.caption(f"⭐ {row.get('score', 0)} | {generos_limpos}")
+                st.caption(f"🗓️ Assistido em: {data_formatada}")
+                st.markdown("✅ Assistido")
+        index += 1
+
+
+def exibir_pagina_genero(genero, page=1, page_size=12):
+    """Exibe todos os animes de um gênero com paginação."""
+    st.markdown(f"# 🎬 {genero}")
+    df_filtrado = df[df['generos'].apply(lambda generos: genero in generos if isinstance(generos, list) else False)]
+    total = len(df_filtrado)
+
+    if total == 0:
+        st.warning(f"Nenhum anime encontrado para o gênero {genero}.")
+        return
+
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * page_size
+    df_pagina = df_filtrado.iloc[start:start + page_size]
+
+    st.markdown(f"**Total de animes:** {total}  \n" \
+                f"**Página:** {page} de {total_pages}  \n" \
+                f"**Mostrando:** {len(df_pagina)} por página")
+    st.divider()
+
+    cols = st.columns(4)
+    for i, (_, row) in enumerate(df_pagina.iterrows()):
+        with cols[i % 4]:
+            renderizar_card_anime(row, f"genre_{genero}_{start + i}")
+
+    st.divider()
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("◀️ Anterior", key=f"gen_prev_{genero}", disabled=page <= 1):
+            st.session_state.pagina_genero = page - 1
+            st.rerun()
+    with col2:
+        if st.button("Limpar filtro", key=f"gen_clear_{genero}"):
+            st.session_state.selected_genero = None
+            st.session_state.pagina_genero = 1
+            st.rerun()
+    with col3:
+        if st.button("Próxima ▶️", key=f"gen_next_{genero}", disabled=page >= total_pages):
+            st.session_state.pagina_genero = page + 1
+            st.rerun()
 
 # --- ÁREA DE BUSCA (Centralizada) ---
 col_busca_1, col_busca_2, col_busca_3 = st.columns([1, 2, 1])
@@ -373,7 +791,6 @@ def abrir_detalhes_anime(anime_title):
 def fechar_detalhes():
     if "anime_selecionado" in st.session_state:
         del st.session_state.anime_selecionado
-    st.rerun()
 
 
 def exibir_pagina_detalhes(anime_title):
@@ -419,6 +836,45 @@ def exibir_pagina_detalhes(anime_title):
                 st.session_state.mostrar_login = True
                 st.rerun()
 
+        st.markdown("### ✅ Histórico")
+        if "usuario_logado" in st.session_state:
+            is_watched = is_assistido(row.get('title', ''))
+            watch_text = "✅ Assistido" if is_watched else "📌 Marcar como assistido"
+            if st.button(watch_text, key=f"watched_detail_{anime_title}", use_container_width=True, disabled=is_watched):
+                marcar_como_assistido(row.get('title', ''))
+                st.rerun()
+        else:
+            st.warning("Faça login para marcar este anime como assistido.")
+            if st.button("Entrar para marcar como assistido", use_container_width=True):
+                st.session_state.mostrar_login = True
+                st.rerun()
+
+        st.divider()
+        st.markdown("### 💬 Comentários")
+        if "usuario_logado" in st.session_state:
+            safe_key = "comentario_" + "".join(ch if ch.isalnum() else "_" for ch in anime_title)
+            input_key = f"{safe_key}_input"
+            if input_key not in st.session_state:
+                st.session_state[input_key] = ""
+            st.text_area("Escreva seu comentário:", key=input_key, height=120)
+            st.button("Comentar", key=f"{safe_key}_btn", on_click=adicionar_comentario, args=(anime_title, safe_key), use_container_width=True)
+        else:
+            st.warning("Faça login para comentar neste anime.")
+
+        comentarios = todos_comentarios_anime(anime_title)
+        if comentarios:
+            for comentario in comentarios:
+                data_formatada = comentario.get("data", "")
+                try:
+                    data_formatada = datetime.fromisoformat(data_formatada).strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    pass
+                st.markdown(f"**{comentario.get('usuario', 'Anônimo')}** — {data_formatada}")
+                st.write(comentario.get("texto", ""))
+                st.divider()
+        else:
+            st.info("Seja o primeiro a comentar neste anime!")
+
     st.divider()
     if st.button("🔙 Voltar", on_click=fechar_detalhes, use_container_width=True):
         pass
@@ -444,6 +900,87 @@ def calcular_score_recomendacao(generos_alvo, row):
     return score_final, generos_iguais
 
 
+def obter_recomendacoes_historico(limit=8):
+    """Retorna recomendações baseadas no histórico de assistidos do usuário"""
+    if "usuario_logado" not in st.session_state or not st.session_state.historico:
+        return pd.DataFrame()  # Retorna DataFrame vazio se não logado ou sem histórico
+
+    # Obter títulos assistidos
+    titulos_assistidos = obter_titulos_historico(st.session_state.historico)
+
+    # Filtrar animes assistidos do DataFrame
+    df_assistidos = df[df['title'].isin(titulos_assistidos)]
+
+    if df_assistidos.empty:
+        return pd.DataFrame()
+
+    # Calcular gêneros mais frequentes nos assistidos
+    generos_contagem = {}
+    for _, row in df_assistidos.iterrows():
+        for genero in row.get('generos', []):
+            generos_contagem[genero] = generos_contagem.get(genero, 0) + 1
+
+    # Ordenar gêneros por frequência
+    generos_alvo = sorted(generos_contagem.keys(), key=lambda g: generos_contagem[g], reverse=True)[:5]  # Top 5 gêneros
+
+    if not generos_alvo:
+        return pd.DataFrame()
+
+    # Filtrar animes não assistidos
+    df_recom = df[~df['title'].isin(titulos_assistidos)].copy()
+
+    # Filtrar animes com pelo menos 1 gênero em comum
+    df_recom['generos_iguais'] = df_recom['generos'].apply(
+        lambda x: len(set(generos_alvo).intersection(set(x)))
+    )
+
+    # Manter apenas animes com gêneros em comum
+    df_recom = df_recom[df_recom['generos_iguais'] > 0]
+
+    # Calcular score de recomendação
+    scores = []
+    for _, row in df_recom.iterrows():
+        score, _ = calcular_score_recomendacao(generos_alvo, row)
+        scores.append(score)
+
+    df_recom = df_recom.assign(score_recom=scores)
+
+    # Ordena por score e retorna
+    return df_recom.sort_values(by='score_recom', ascending=False).head(limit)
+
+
+def renderizar_card_anime(row, key_prefix, show_favorito=True, show_assistido=True, show_detalhes=True):
+    """Renderiza um card de anime com opções de favorito e status de assistido"""
+    with st.container():
+        cover_image = row.get("cover_image_large", "")
+        exibir_imagem_padronizada(cover_image)
+        anime_title = row.get('title', 'Título não disponível')
+        st.write(f"**{anime_title}**")
+
+        # Indicador de já assistido
+        if show_assistido and "usuario_logado" in st.session_state:
+            if is_assistido(anime_title):
+                st.markdown("✅ **Já assistido**")
+
+        generos_limpos = ", ".join(row.get("generos", [])) if row.get("generos", []) else "Não informado"
+        st.caption(f"⭐ {row.get('score', 0)} | {generos_limpos}")
+
+        # Botão de favoritar
+        if show_favorito and "usuario_logado" in st.session_state:
+            is_fav = is_favorito(anime_title)
+            button_text = "❤️ Favoritado" if is_fav else "🤍 Favoritar"
+            if st.button(button_text, key=f"fav_{key_prefix}_{anime_title}", use_container_width=True):
+                toggle_favorito(anime_title)
+                st.rerun()
+        elif show_favorito:
+            if st.button("🤍 Favoritar (Login necessário)", key=f"fav_{key_prefix}_{anime_title}", use_container_width=True, disabled=True):
+                st.session_state.mostrar_login = True
+                st.rerun()
+
+        if show_detalhes:
+            st.button("Saiba Mais", key=f"details_{key_prefix}_{anime_title}", on_click=abrir_detalhes_anime, args=(anime_title,), use_container_width=True)
+
+
 def obter_recomendacoes(anime_alvo, generos_alvo, limit=8):
     """Retorna recomendações ordenadas por relevância"""
     df_recom = df.copy()
@@ -458,6 +995,11 @@ def obter_recomendacoes(anime_alvo, generos_alvo, limit=8):
         (df_recom['title'] != anime_alvo['title']) & 
         (df_recom['generos_iguais'] > 0)
     ]
+    
+    # Se logado, excluir animes já assistidos
+    if "usuario_logado" in st.session_state and st.session_state.historico:
+        titulos_assistidos = obter_titulos_historico(st.session_state.historico)
+        df_recom = df_recom[~df_recom['title'].isin(titulos_assistidos)]
     
     # Calcula score de recomendação de forma explícita e segura
     scores = []
@@ -506,34 +1048,7 @@ def buscar_anime(nome_buscado, botao_clicado):
         cols = st.columns(2)
         for i, (_, row) in enumerate(resultado_exibido.iterrows()):
             with cols[i % 2]:
-                with st.container():
-                    cover_image = row.get("cover_image_large", "")
-                    exibir_imagem_padronizada(cover_image)
-                    st.subheader(row.get("title", "Título não disponível"))
-                    generos_limpos = ", ".join(row.get("generos", [])) if row.get("generos", []) else "Não informado"
-                    st.write(f"**Gêneros:** {generos_limpos}")
-                    st.write(f"**Episódios:** {int(row.get('episodes', 0))}")
-                    sinopse = str(row.get("synopsis", "") or "")
-                    st.caption(sinopse[:150] + "..." if len(sinopse) > 150 else sinopse)
-                    trailer_id = row.get("trailer_id", "")
-                    if pd.notna(trailer_id) and trailer_id:
-                        st.link_button("▶️ Assistir Trailer", url=f"https://www.youtube.com/watch?v={trailer_id}", use_container_width=True)
-
-                    anime_title = row.get("title", "")
-                    st.button("Saiba Mais", key=f"details_search_{i}", on_click=abrir_detalhes_anime, args=(anime_title,), use_container_width=True)
-
-                    # Botão de favoritar (só mostra se logado)
-                    if "usuario_logado" in st.session_state:
-                        anime_title = row.get("title", "")
-                        is_fav = is_favorito(anime_title)
-                        button_text = "❤️ Favoritado" if is_fav else "🤍 Favoritar"
-                        if st.button(button_text, key=f"fav_search_{i}", use_container_width=True):
-                            toggle_favorito(anime_title)
-                            st.rerun()
-                    else:
-                        if st.button("🤍 Favoritar (Login necessário)", key=f"fav_search_{i}", use_container_width=True, disabled=True):
-                            st.session_state.mostrar_login = True
-                            st.rerun()
+                renderizar_card_anime(row, f"search_{i}")
 
         st.divider()
         st.write("### ✨ Animes com gêneros similares")
@@ -544,28 +1059,7 @@ def buscar_anime(nome_buscado, botao_clicado):
             cols_rec = st.columns(4)
             for i, (_, row) in enumerate(recom.iterrows()):
                 with cols_rec[i % 4]:
-                    with st.container():
-                        cover_image = row.get("cover_image_large", "")
-                        exibir_imagem_padronizada(cover_image)
-                        anime_title = row.get('title', '')
-                        st.write(f"**{anime_title or 'Título não disponível'}**")
-                        score_recom = row.get('score_recom', 0)
-                        generos_iguais = row.get('generos_iguais', 0)
-                        st.caption(f"⭐ {score_recom:.1f} | {generos_iguais} gêneros iguais")
-                        st.button("Saiba Mais", key=f"rec_{i}", on_click=abrir_detalhes_anime, args=(anime_title,), use_container_width=True)
-
-                        # Botão de favoritar (só mostra se logado)
-                        if "usuario_logado" in st.session_state:
-                            anime_title = row.get("title", "")
-                            is_fav = is_favorito(anime_title)
-                            button_text = "❤️ Favoritado" if is_fav else "🤍 Favoritar"
-                            if st.button(button_text, key=f"fav_rec_{i}", use_container_width=True):
-                                toggle_favorito(anime_title)
-                                st.rerun()
-                        else:
-                            if st.button("🤍 Favoritar (Login necessário)", key=f"fav_rec_{i}", use_container_width=True, disabled=True):
-                                st.session_state.mostrar_login = True
-                                st.rerun()
+                    renderizar_card_anime(row, f"rec_{i}")
         else:
             st.info("Nenhuma recomendação com gêneros similares encontrada.")
 
@@ -593,6 +1087,10 @@ if st.session_state.get("anime_selecionado"):
         exibir_pagina_detalhes(st.session_state.anime_selecionado)
         st.stop()
 
+if st.session_state.get("selected_genero"):
+    exibir_pagina_genero(st.session_state.selected_genero, st.session_state.pagina_genero)
+    st.stop()
+
 buscar_anime(nome_buscado, botao_clicado)
 
 # Função para criar um card de anime
@@ -601,20 +1099,7 @@ def top_animes():
     cols = st.columns(5)
     for i, (_, row) in enumerate(top_animes_df.iterrows()):
         with cols[i]:
-            with st.container():
-                cover_image = row.get('cover_image_large', '')
-                exibir_imagem_padronizada(cover_image)
-                anime_title = row.get('title', 'Título não disponível')
-                st.caption(f"**{anime_title}**")
-                st.button("Saiba Mais", key=f"top_{i}", on_click=abrir_detalhes_anime, args=(anime_title,), use_container_width=True)
-
-                # Botão de favoritar
-                anime_title = row.get("title", "")
-                is_fav = is_favorito(anime_title)
-                button_text = "❤️ Favoritado" if is_fav else "🤍 Favoritar"
-                if st.button(button_text, key=f"fav_top_{i}", use_container_width=True):
-                    toggle_favorito(anime_title)
-                    st.rerun()
+            renderizar_card_anime(row, f"top_{i}")
 
 st.markdown("## 🌟 Top Animes")
 
@@ -634,35 +1119,24 @@ def top_categoria():
                 cols = st.columns(4)
                 for j, (_, row) in enumerate(top_genero.iterrows()):
                     with cols[j]:
-                        with st.container():
-                            cover_image = row.get('cover_image_large', '')
-                            exibir_imagem_padronizada(cover_image)
-                            titulo_curto = row.get('title', '')
-                            titulo_curto = titulo_curto[:20] + "..." if len(titulo_curto) > 20 else titulo_curto
-                            st.markdown(f"**{titulo_curto}**")
-                            st.caption(f"⭐ {row.get('score', 0)}")
-                            anime_title = row.get('title', '')
-                            st.button("Saiba Mais", key=f"btn_{genero}_{j}", on_click=abrir_detalhes_anime, args=(anime_title,), use_container_width=True)
-
-                            # Botão de favoritar
-                            anime_title = row.get("title", "")
-                            is_fav = is_favorito(anime_title)
-                            button_text = "❤️ Favoritado" if is_fav else "🤍 Favoritar"
-                            if st.button(button_text, key=f"fav_cat_{genero}_{j}", use_container_width=True):
-                                toggle_favorito(anime_title)
-                                st.rerun()
+                        renderizar_card_anime(row, f"cat_{genero}_{j}")
             else:
                 st.info(f"Nenhum anime de {genero} encontrado no banco de dados.")
 
 top_categoria()
 
-# Exibir seção de favoritos se solicitado e usuário logado
-if st.session_state.get("mostrar_favoritos", False) and "usuario_logado" in st.session_state:
-    exibir_favoritos()
-    st.divider()
-elif st.session_state.get("mostrar_favoritos", False) and "usuario_logado" not in st.session_state:
-    st.warning("Você precisa estar logado para acessar seus favoritos!")
-    st.session_state.mostrar_favoritos = False
+# Recomendações baseadas no histórico (só mostra se logado e com histórico)
+if "usuario_logado" in st.session_state and st.session_state.historico:
+    st.markdown("## 🎯 Recomendações para Você")
+    recom_historico = obter_recomendacoes_historico(limit=8)
+
+    if not recom_historico.empty:
+        cols_rec_hist = st.columns(4)
+        for i, (_, row) in enumerate(recom_historico.iterrows()):
+            with cols_rec_hist[i % 4]:
+                renderizar_card_anime(row, f"hist_rec_{i}")
+    else:
+        st.info("Não conseguimos encontrar recomendações baseadas no seu histórico. Continue assistindo animes para melhorar as sugestões!")
 
 st.divider()
 
