@@ -6,6 +6,7 @@ import json
 import os
 import hashlib
 from datetime import datetime
+import re
 
 # Configurações da página
 st.set_page_config(
@@ -320,17 +321,36 @@ if "historico" not in st.session_state:
 # Título e barra lateral
 st.title("SMartAnime")
 st.sidebar.title("Gêneros Populares")
+
+# Os nomes exibidos são em português, mas o filtro usa os gêneros em inglês presentes no dataset.
 generos_sidebar = [
-    "Ação", "Aventura", "Drama", "Fantasia", "Romance", "Comédia",
-    "Ecchi", "Hentai", "Horror", "Mahou Shoujo", "Mecha", "Music",
-    "Mystery", "Psychological", "Sci-Fi", "Slice of Life", "Sports",
-    "Supernatural", "Thriller"
+    ("Ação", "Action"),
+    ("Aventura", "Adventure"),
+    ("Drama", "Drama"),
+    ("Fantasia", "Fantasy"),
+    ("Romance", "Romance"),
+    ("Comédia", "Comedy"),
+    ("Ecchi", "Ecchi"),
+    ("Hentai", "Hentai"),
+    ("Horror", "Horror"),
+    ("Mahou Shoujo", "Mahou Shoujo"),
+    ("Mecha", "Mecha"),
+    ("Music", "Music"),
+    ("Mystery", "Mystery"),
+    ("Psychological", "Psychological"),
+    ("Sci-Fi", "Sci-Fi"),
+    ("Slice of Life", "Slice of Life"),
+    ("Sports", "Sports"),
+    ("Supernatural", "Supernatural"),
+    ("Thriller", "Thriller"),
 ]
+
+generos_sidebar_map = {actual: display for display, actual in generos_sidebar}
 cols_sidebar = st.sidebar.columns(3)
-for i, genero in enumerate(generos_sidebar):
+for i, (display, actual) in enumerate(generos_sidebar):
     with cols_sidebar[i % 3]:
-        if st.button(genero, key=f"genero_btn_{i}", use_container_width=True):
-            st.session_state.selected_genero = genero
+        if st.button(display, key=f"genero_btn_{i}", use_container_width=True):
+            st.session_state.selected_genero = actual
             st.session_state.pagina_genero = 1
             st.session_state.mostrar_favoritos = False
             st.session_state.mostrar_historico = False
@@ -743,12 +763,13 @@ def exibir_historico():
 
 def exibir_pagina_genero(genero, page=1, page_size=12):
     """Exibe todos os animes de um gênero com paginação."""
-    st.markdown(f"# 🎬 {genero}")
+    display_genero = generos_sidebar_map.get(genero, genero)
+    st.markdown(f"# 🎬 {display_genero}")
     df_filtrado = df[df['generos'].apply(lambda generos: genero in generos if isinstance(generos, list) else False)]
     total = len(df_filtrado)
 
     if total == 0:
-        st.warning(f"Nenhum anime encontrado para o gênero {genero}.")
+        st.warning(f"Nenhum anime encontrado para o gênero {display_genero}.")
         return
 
     total_pages = max(1, (total + page_size - 1) // page_size)
@@ -795,7 +816,7 @@ with col_busca_2:
 def string_para_lista(genres_str):
     if pd.isna(genres_str) or not genres_str:
         return []
-    return [genre.strip() for genre in str(genres_str).split(',')]
+    return [genre.strip() for genre in re.split(r"[;,]", str(genres_str)) if genre.strip()]
 
 if "genres" in df.columns:
     df['generos'] = df['genres'].apply(string_para_lista)
