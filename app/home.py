@@ -14,18 +14,30 @@ st.set_page_config(
     layout="wide",
 )
 
-# CSS para padronizar imagens
-st.markdown(
-    """
-    <style>
-        img {
-            max-height: 400px;
-            object-fit: cover;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+base_dir = Path(__file__).resolve().parents[1]
+
+# Carregar CSS customizado de anime
+css_file = base_dir / "assets" / "style.css"
+if css_file.exists():
+    with open(css_file, "r", encoding="utf-8") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+else:
+    st.markdown(
+        """
+        <style>
+            img {
+                max-height: 400px;
+                object-fit: cover;
+                border-radius: 18px;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+            }
+            body {
+                background: #0b0624;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # --- GERENCIAMENTO DE FAVORITOS ---
 base_dir = Path(__file__).resolve().parents[1]
@@ -33,6 +45,17 @@ FAVORITOS_FILE = base_dir / "data" / "favoritos.json"
 
 # --- GERENCIAMENTO DE USUÁRIOS ---
 USERS_FILE = base_dir / "data" / "users.json"
+
+# --- FUNÇÕES AUXILIARES PARA IMAGENS ---
+def obter_url_imagem(row):
+    """Obtém URL da imagem com fallback de image_url se cover_image_large não estiver disponível"""
+    cover_image = row.get("cover_image_large", "")
+    if pd.notna(cover_image) and cover_image and str(cover_image).strip():
+        return cover_image
+    image_url = row.get("image_url", "")
+    if pd.notna(image_url) and image_url and str(image_url).strip():
+        return image_url
+    return ""
 
 def hash_password(password):
     """Gera hash da senha para armazenamento seguro"""
@@ -517,10 +540,25 @@ if st.session_state.get("mostrar_login", False):
     else:
         st.session_state.mostrar_login = False
 
-csv_path = base_dir / "data" / "animes.csv"
+csv_path = base_dir / "data" / "SmartAnime_dataset.csv"
+
+if not csv_path.exists():
+    st.error(f"Arquivo não encontrado: {csv_path}.\nPor favor, verifique se o arquivo existe em data/ e se o nome está correto.")
+    st.stop()
+
+# Função utilitária para carregar o CSV com tolerância a erros de codificação
+def carregar_animes(path):
+    for encoding in ["utf-8", "cp1252"]:
+        try:
+            with open(path, "r", encoding=encoding, errors="replace") as f:
+                return pd.read_csv(f)
+        except Exception:
+            continue
+    st.error("Não foi possível carregar o arquivo CSV de animes. Verifique o arquivo e tente novamente.")
+    st.stop()
 
 # Carregar dados dos animes
-df = pd.read_csv(csv_path, encoding="cp1252")
+df = carregar_animes(csv_path)
 if "episodes" in df.columns:
     df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").fillna(0).astype(int)
 else:
@@ -544,8 +582,8 @@ if st.session_state.get("mostrar_favoritos", False):
                 for i, (_, row) in enumerate(df_favoritos.iterrows()):
                     with cols[i % 4]:
                         with st.container():
-                            cover_image = row.get("cover_image_large", "")
-                            if pd.notna(cover_image) and cover_image:
+                            cover_image = obter_url_imagem(row)
+                            if cover_image:
                                 st.image(cover_image, use_container_width=True)
                             else:
                                 st.info("Imagem não disponível.")
@@ -596,8 +634,8 @@ if st.session_state.get("mostrar_historico", False):
                     pass
                 with cols[index % 4]:
                     with st.container():
-                        cover_image = row.get("cover_image_large", "")
-                        if pd.notna(cover_image) and cover_image:
+                        cover_image = obter_url_imagem(row)
+                        if cover_image:
                             st.image(cover_image, use_container_width=True)
                         else:
                             st.info("Imagem não disponível.")
@@ -616,11 +654,6 @@ if st.session_state.get("mostrar_historico", False):
         st.warning("Você precisa estar logado para acessar seu histórico!")
         st.session_state.mostrar_historico = False
 
-df = pd.read_csv(csv_path, encoding="cp1252")
-# Substitui todos os vazios (NaN) na coluna de episódios por 0
-if "episodes" in df.columns:
-    df["episodes"] = pd.to_numeric(df["episodes"], errors="coerce").fillna(0).astype(int)
-else:
     df["episodes"] = 0
 
 # --- FUNÇÕES AUXILIARES ---
@@ -649,7 +682,7 @@ def exibir_favoritos():
     for i, (_, row) in enumerate(df_favoritos.iterrows()):
         with cols[i % 4]:
             with st.container():
-                cover_image = row.get("cover_image_large", "")
+                cover_image = obter_url_imagem(row)
                 exibir_imagem_padronizada(cover_image)
                 st.write(f"**{row.get('title', 'Título não disponível')}**")
                 generos_limpos = ", ".join(row.get("generos", [])) if row.get("generos", []) else "Não informado"
@@ -698,7 +731,7 @@ def exibir_historico():
 
         with cols[index % 4]:
             with st.container():
-                cover_image = row.get("cover_image_large", "")
+                cover_image = obter_url_imagem(row)
                 exibir_imagem_padronizada(cover_image)
                 st.write(f"**{anime_title}**")
                 generos_limpos = ", ".join(row.get("generos", [])) if row.get("generos", []) else "Não informado"
@@ -801,7 +834,7 @@ def exibir_pagina_detalhes(anime_title):
 
     row = anime.iloc[0]
     st.markdown(f"## 🎬 {row.get('title', 'Título não disponível')}")
-    exibir_imagem_padronizada(row.get('cover_image_large', ''))
+    exibir_imagem_padronizada(obter_url_imagem(row))
 
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -952,7 +985,7 @@ def obter_recomendacoes_historico(limit=8):
 def renderizar_card_anime(row, key_prefix, show_favorito=True, show_assistido=True, show_detalhes=True):
     """Renderiza um card de anime com opções de favorito e status de assistido"""
     with st.container():
-        cover_image = row.get("cover_image_large", "")
+        cover_image = obter_url_imagem(row)
         exibir_imagem_padronizada(cover_image)
         anime_title = row.get('title', 'Título não disponível')
         st.write(f"**{anime_title}**")
@@ -1040,7 +1073,7 @@ def buscar_anime(nome_buscado, botao_clicado):
         st.write(f"### 📍 {len(resultado)} resultado(s) encontrado(s)")
         st.write("### Resultados da pesquisa")
 
-        max_resultados = 10
+        max_resultados = 20
         resultado_exibido = resultado.head(max_resultados)
         if len(resultado) > max_resultados:
             st.info(f"Mostrando os {max_resultados} primeiros de {len(resultado)} resultados.")
@@ -1101,29 +1134,31 @@ def top_animes():
         with cols[i]:
             renderizar_card_anime(row, f"top_{i}")
 
-st.markdown("## 🌟 Top Animes")
+search_mode = bool(nome_buscado and nome_buscado.strip())
 
-top_animes()
+if not search_mode:
+    st.markdown("## 🌟 Top Animes")
+    top_animes()
 
-def top_categoria():
-    generos_destaque = ["Action", "Romance", "Fantasy", "Comedy", "Drama"]
+    def top_categoria():
+        generos_destaque = ["Action", "Romance", "Fantasy", "Comedy", "Drama"]
 
-    st.markdown("🏆 Top por Categoria")
-    tabs = st.tabs(generos_destaque)
+        st.markdown("🏆 Top por Categoria")
+        tabs = st.tabs(generos_destaque)
 
-    for i, genero in enumerate(generos_destaque):
-        with tabs[i]:
-            top_genero = df[df['genres'].astype(str).str.contains(genero, na=False)].sort_values(by='score', ascending=False).head(4)
+        for i, genero in enumerate(generos_destaque):
+            with tabs[i]:
+                top_genero = df[df['genres'].astype(str).str.contains(genero, na=False)].sort_values(by='score', ascending=False).head(4)
 
-            if not top_genero.empty:
-                cols = st.columns(4)
-                for j, (_, row) in enumerate(top_genero.iterrows()):
-                    with cols[j]:
-                        renderizar_card_anime(row, f"cat_{genero}_{j}")
-            else:
-                st.info(f"Nenhum anime de {genero} encontrado no banco de dados.")
+                if not top_genero.empty:
+                    cols = st.columns(4)
+                    for j, (_, row) in enumerate(top_genero.iterrows()):
+                        with cols[j]:
+                            renderizar_card_anime(row, f"cat_{genero}_{j}")
+                else:
+                    st.info(f"Nenhum anime de {genero} encontrado no banco de dados.")
 
-top_categoria()
+    top_categoria()
 
 # Recomendações baseadas no histórico (só mostra se logado e com histórico)
 if "usuario_logado" in st.session_state and st.session_state.historico:
@@ -1140,10 +1175,60 @@ if "usuario_logado" in st.session_state and st.session_state.historico:
 
 st.divider()
 
-# Funções de DataFrame para exibir tabelas de animes
-def exibir_tabela_animes():
-    st.markdown("## 📊 Animes em Ordem Alfabética")
-    df_organizado = df.sort_values(by='title', ascending=True)
-    st.dataframe(df_organizado)
+# Função para exibir gráfico de gêneros mais assistidos
+def exibir_generos_mais_assistidos():
+    """Exibe um gráfico com os gêneros mais assistidos pelo usuário"""
+    st.markdown("## 📊 Gêneros Mais Assistidos")
+    
+    if "usuario_logado" not in st.session_state:
+        st.info("Faça login para visualizar seus gêneros mais assistidos!")
+        return
+    
+    historico = st.session_state.get("historico", [])
+    if not historico:
+        st.info("Você ainda não marcou nenhum anime como assistido. Marque animes para ver os gêneros mais assistidos!")
+        return
+    
+    # Contar gêneros dos animes assistidos
+    generos_contagem = {}
+    titulos_assistidos = obter_titulos_historico(historico)
+    
+    for titulo in titulos_assistidos:
+        anime = df[df["title"] == titulo]
+        if not anime.empty:
+            generos = anime.iloc[0].get("genres", [])
+            if isinstance(generos, str):
+                generos = [g.strip() for g in generos.split(",")]
+            elif isinstance(generos, list):
+                generos = generos
+            else:
+                continue
+            
+            for genero in generos:
+                if genero and str(genero).strip() != "":
+                    genero_limpo = str(genero).strip()
+                    generos_contagem[genero_limpo] = generos_contagem.get(genero_limpo, 0) + 1
+    
+    if not generos_contagem:
+        st.warning("Não conseguimos encontrar informações de gêneros para seus animes assistidos.")
+        return
+    
+    # Ordenar e exibir gráfico
+    generos_ordenados = sorted(generos_contagem.items(), key=lambda x: x[1], reverse=True)[:15]
+    generos_nomes = [g[0] for g in generos_ordenados]
+    generos_valores = [g[1] for g in generos_ordenados]
+    
+    # Criar dataframe para o gráfico
+    df_generos = pd.DataFrame({
+        "Gênero": generos_nomes,
+        "Quantidade": generos_valores
+    })
+    
+    # Exibir gráfico de barras
+    st.bar_chart(df_generos.set_index("Gênero"), use_container_width=True)
+    
+    # Exibir tabela com estatísticas
+    st.markdown("### 📈 Estatísticas de Gêneros")
+    st.dataframe(df_generos, use_container_width=True, hide_index=True)
 
-exibir_tabela_animes()
+exibir_generos_mais_assistidos()

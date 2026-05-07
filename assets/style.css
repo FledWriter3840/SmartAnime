@@ -1,0 +1,127 @@
+
+:root {
+  color-scheme: dark;
+  --bg: #090b1e;
+  --panel: rgba(15, 11, 42, 0.94);
+  --panel-strong: rgba(17, 12, 52, 0.98);
+  --surface: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.14);
+  --text: #f6f5ff;
+  --muted: #c7caf6;
+  --accent: #7f52ff;
+  --accent-2: #ff61ce;
+  --shadow: 0 30px 100px rgba(45, 15, 135, 0.25);
+}
+
+body, .stApp {
+  background: radial-gradient(circle at top left, #26145e 0%, #0a0720 46%, #05040f 100%);
+  color: var(--text);
+}
+
+main {
+  background: transparent;
+}
+
+.css-1outpf7, .css-1d391kg, .css-1v0mbdj, .css-1d0jq9s {
+  background: rgba(6, 3, 22, 0.7) !important;
+}
+
+.stSidebar {
+  background: linear-gradient(180deg, rgba(13, 9, 40, 0.95), rgba(20, 7, 55, 0.92));
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+
+button, .stButton>button {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: white;
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(127, 82, 255, 0.28);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+button:hover, .stButton>button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 50px rgba(127, 82, 255, 0.36);
+}
+
+button:active, .stButton>button:active {
+  transform: translateY(0);
+}
+
+.css-1n8tuoz, .stTextInput>div>input, textarea {
+  background: rgba(255,255,255,0.06) !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  border-radius: 16px;
+  color: var(--text) !important;
+}
+
+textarea, input, select {
+  color: var(--text) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: rgba(199, 202, 246, 0.6) !important;
+}
+
+.stMarkdown {
+  color: var(--text);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  text-shadow: 0 0 30px rgba(127, 82, 255, 0.3);
+}
+
+h1 {
+  color: #f4ecff;
+}
+
+h2, h3 {
+  color: #e7e0ff;
+}
+
+.css-1hynsf8, .css-1l02zno, .css-1q8dd3s, .css-1a2wz9h {
+  box-shadow: var(--shadow) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  backdrop-filter: blur(18px);
+  background: rgba(12, 7, 31, 0.72) !important;
+}
+
+section, .stCard, .css-1emrehy {
+  border-radius: 24px;
+}
+
+img {
+  border-radius: 20px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  max-height: 480px;
+  object-fit: cover;
+}
+
+.stDataFrame table {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.stDataFrame th, .stDataFrame td {
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.css-1d0jmj7, .css-1l6zggl {
+  background: rgba(255,255,255,0.05) !important;
+}
+
+a {
+  color: #a98fff !important;
+}
+
+blockquote {
+  border-left: 4px solid rgba(127, 82, 255, 0.8);
+  padding-left: 18px;
+  color: rgba(255,255,255,0.85);
+}
+
+.stAlert {
+  border-radius: 18px !important;
+}
